@@ -41,13 +41,16 @@ class Address(object):
         self.comment = str(comment)
         return
     
-    def print_address(self,spaces=0):
+    def print_address(self,spaces=0,negated=False):
         """
         method to print out the address with specified indentation
         """
         if spaces > 0:
             print " "*(spaces-1),
-        print "[%s]: %s" % (self.name,self.addr)
+        if negated:
+            print "*NOT* [%s]: %s *NOT*" % (self.name,self.addr)
+        else:
+            print "[%s]: %s" % (self.name,self.addr)
         return
 
 class AddressGroup(object):
@@ -79,13 +82,16 @@ class AddressGroup(object):
         self.comment = str(comment)
         return
     
-    def print_address(self,spaces=0):
+    def print_address(self,spaces=0,negated=False):
         """
         Method to print out the addresses in the address group
         """
         if spaces > 0:
             print " "*(spaces-1),
-        print "Address group: [%s]" % self.name
+        if negated:
+            print "*NOT* Address group: [%s] *NOT*" % self.name
+        else:
+            print "Address group: [%s]" % self.name
         for address in self.addr.keys():
             self.addr[address].print_address(spaces+2)
         return
@@ -158,19 +164,28 @@ class Service(object):
         self.protocols[132] = "SCTP"
         return
     
-    def print_service(self,spaces=0):
+    def print_service(self,spaces=0,negated=False):
         if spaces > 0:
             print " "*(spaces-1),
-        print "[%s]" % self.name,
+        if negated:
+            print "*NOT* [%s]" % self.name,
+        else:
+            print "[%s]" % self.name,
         if self.protonum in self.protocols.keys():
             protoname = self.protocols[self.protonum]
         else:
             protoname = ''
         print "%s[%d]" % (protoname,self.protonum),
         if self.sdfrom != self.sdto:
-            print "ports %d-%d" % (self.sdfrom,self.sdto)
+            if negated:
+                print "ports %d-%d *NOT*" % (self.sdfrom,self.sdto)
+            else:
+                print "ports %d-%d" % (self.sdfrom,self.sdto)
         else:
-            print "port %d" % (self.sdfrom)
+            if negated:
+                print "port %d *NOT*" % (self.sdfrom)
+            else:
+                print "port %d" % (self.sdfrom)
         return
 
 class ServiceGroup(object):
@@ -198,10 +213,13 @@ class ServiceGroup(object):
                 print 'service already there - skipping add'
         return
     
-    def print_service(self,spaces=0):
+    def print_service(self,spaces=0,negated=False):
         if spaces > 0:
             print " "*(spaces-1),
-        print "Service group: [%s]" % self.name
+        if negated:
+            print "*NOT* Service group: [%s] *NOT*" % self.name
+        else:
+            print "Service group: [%s]" % self.name
         for services in sorted(self.services.keys()):
             self.services[services].print_service(spaces+2)
         return
@@ -320,22 +338,25 @@ class PolicyItem(object):
         print "From:"
         for addr in self.srcaddr.keys():
             if self.srcaddr[addr]['negated']:
-                print "(not)",
-            self.srcaddr[addr]['src'].print_address(spaces+4)
+                self.srcaddr[addr]['src'].print_address(spaces+4,True)
+            else:
+                self.srcaddr[addr]['src'].print_address(spaces+4)
         if spaces > 0:
             print " "*(spaces-1),
         print "To:"
         for addr in self.dstaddr.keys():
             if self.dstaddr[addr]['negated']:
-                print "(not)",
-            self.dstaddr[addr]['dst'].print_address(spaces+4)
+                self.dstaddr[addr]['dst'].print_address(spaces+4,True)
+            else:
+                self.dstaddr[addr]['dst'].print_address(spaces+4)
         if spaces > 0:
             print " "*(spaces-1),
         print "Services:"
         for service in self.dstsvc.keys():
             if self.dstsvc[service]['negated']:
-                print "(not)",
-            self.dstsvc[service]['svc'].print_service(spaces+4)
+                self.dstsvc[service]['svc'].print_service(spaces+4,True)
+            else:
+                self.dstsvc[service]['svc'].print_service(spaces+4)
         if spaces > 0:
             print " "*(spaces-1),
         print "Action:  %s" % self.action,
