@@ -464,6 +464,12 @@ def cmd_modify_single_check(args):
                 print "Disabling all checks"
             resultmsg = mypingdom.checks[number]['pingdom'].modifyChecks(paused = True)
             print "%s" % resultmsg
+    if enable:
+        cmdtype = "-Pingdom Enable- "
+    else:
+        cmdtype = "-Pingdom Disable- "
+    command='/home/myuser/pingdom/sendtoirc Average: '+cmdtype+str(resultmsg)
+    os.system(command)
     return {'args': args, 'pingdom': mypingdom, 'resultmsg': resultmsg}
 
 def cmd_modify_group_checks(args):
@@ -564,6 +570,12 @@ def cmd_modify_group_checks(args):
         else:
             print "Error: Alert Policy [%s] not found" % name
             return {'args': args,'pingdom': mypingdom}
+    if enable:
+        cmdtype = "-Pingdom Enable- "
+    else:
+        cmdtype = "-Pingdom Disable- "
+    command='/home/myuser/pingdom/sendtoirc Average: '+cmdtype+str(resultmsg)
+    os.system(command)
     return {'args': args, 'pingdom': mypingdom, 'resultmsg': resultmsg}
 
 def cmd_netwhois(args):
@@ -667,19 +679,19 @@ def cmd_check_paused(args):
         msg = MIMEText('''
             Alert: There are '''+str(paused)+''' Pingdom checks paused.
             If this is not intentional, run this command as myuser 
-            on myhost.mydomain.com:
+            on myhost-01.mydomain.com:
             
             /home/myuser/pingdom/pingdom.py -ena -a
             
             We may be missing valid alerts until you fix this.
             ''')
-        msg['To']=email.utils.formataddr(('Some Email Address','nobody@nowhere'))
-        msg['From']=email.utils.formataddr(('Someone','myhostaccount@mydomain.com'))
+        msg['To']=email.utils.formataddr(('Some User','someuser@mydomain.com'))
+        msg['From']=email.utils.formataddr(('My User','myuser@myhost-01.mydomain.com'))
         msg['Subject']='Warning: '+str(paused)+' Pingdom Alerts are paused - please fix - see below'
         server=smtplib.SMTP('mail')
         try:
-          server.sendmail('myhostemail@mydomain.com',\
-                          ['SomeEmailAddress@nowhere.net'],msg.as_string())
+          server.sendmail('myuser@myhost-01.mydomain.com',\
+                          ['someuser@mydomain.com'],msg.as_string())
         finally:
           server.quit()
     return {'pingdom': mypingdom}
