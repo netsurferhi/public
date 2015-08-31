@@ -173,7 +173,7 @@ class Pingdom(object):
             if self.probes[probe]['countryiso'].find('US') == 0 and\
                bool(self.probes[probe]['active']):
                 return probe
-        return
+        return None
     
     def get_checks(self):
         """
