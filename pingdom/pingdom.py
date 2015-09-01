@@ -468,7 +468,7 @@ def cmd_modify_single_check(args):
         cmdtype = "-Pingdom Enable- "
     else:
         cmdtype = "-Pingdom Disable- "
-    command='/home/myuser/pingdom/sendtoirc Average: '+cmdtype+str(resultmsg)
+    command='./sendtoirc Average: '+cmdtype+str(resultmsg)
     os.system(command)
     return {'args': args, 'pingdom': mypingdom, 'resultmsg': resultmsg}
 
@@ -574,7 +574,7 @@ def cmd_modify_group_checks(args):
         cmdtype = "-Pingdom Enable- "
     else:
         cmdtype = "-Pingdom Disable- "
-    command='/home/myuser/pingdom/sendtoirc Average: '+cmdtype+str(resultmsg)
+    command='./sendtoirc Average: '+cmdtype+str(resultmsg)
     os.system(command)
     return {'args': args, 'pingdom': mypingdom, 'resultmsg': resultmsg}
 
@@ -667,31 +667,30 @@ def cmd_check_paused(args):
         print "Paused: %03d Enabled: %03d Total: %03d" % \
               (mypingdom.paused,mypingdom.enabled,mypingdom.check_count)
     if mypingdom.paused > 0 and mypingdom.paused < 50:
-        command='/home/myuser/pingdom/sendtoirc Average: '+str(mypingdom.paused)+'/'+\
+        command='./sendtoirc Average: '+str(mypingdom.paused)+'/'+\
                 str(mypingdom.enabled)+'/'+str(mypingdom.check_count)+\
                 ' Pingdom check\(s\) paused/enabled/total'
         os.system(command)
     elif mypingdom.paused > 49:
-        command='/home/myuser/pingdom/sendtoirc High: '+str(mypingdom.paused)+\
-                ' Pingdom checks paused - if not expected, run myuser@myhost'+\
-                '-01:/home/myuser/pingdom/pingdom.py check -ena -a'
+        command='./sendtoirc High: '+str(mypingdom.paused)+\
+                ' Pingdom checks paused - if not expected, run pingdom.py check -ena -a'
         os.system(command)
         msg = MIMEText('''
             Alert: There are '''+str(paused)+''' Pingdom checks paused.
             If this is not intentional, run this command as myuser 
-            on myhost-01.mydomain.com:
+            on myhost.mydomain.com:
             
-            /home/myuser/pingdom/pingdom.py -ena -a
+            pingdom.py -ena -a
             
             We may be missing valid alerts until you fix this.
             ''')
-        msg['To']=email.utils.formataddr(('Some User','someuser@mydomain.com'))
-        msg['From']=email.utils.formataddr(('My User','myuser@myhost-01.mydomain.com'))
+        msg['To']=email.utils.formataddr(('Some User','someuser@somedomain.com'))
+        msg['From']=email.utils.formataddr(('My User','myuser@mydomain.com'))
         msg['Subject']='Warning: '+str(paused)+' Pingdom Alerts are paused - please fix - see below'
         server=smtplib.SMTP('mail')
         try:
-          server.sendmail('myuser@myhost-01.mydomain.com',\
-                          ['someuser@mydomain.com'],msg.as_string())
+          server.sendmail('myuser@mydomain.com',\
+                          ['someuser@somedomain.com'],msg.as_string())
         finally:
           server.quit()
     return {'pingdom': mypingdom}
