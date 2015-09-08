@@ -757,7 +757,7 @@ def main():
     trace_parser.add_argument('target',action='store',\
                     nargs=1, help='Traceroute destination')
     trace_parser.add_argument('-probe', action='store', type = int, default=44,\
-                    dest='probe', help='Debug level 0-9')
+                    dest='probe', help='Probe number to use')
     trace_parser.add_argument('-debug', action='store', type = int, default=0,\
                     dest='debug', help='Debug level 0-9')
     trace_parser.add_argument('-i', action='store_true', default = False,\
