@@ -1196,7 +1196,7 @@ def main():
     """
     parser = argparse.ArgumentParser(description=\
              'Manage Pingdom Alerts and Services')
-    metavar='{check,group,netwhois,paused,trace}'
+    metavar='{check,group,netwhois,paused,trace,probes}'
     subparsers = parser.add_subparsers(metavar=metavar)
     
     
