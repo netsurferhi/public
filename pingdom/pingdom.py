@@ -4,8 +4,11 @@ from email.mime.text import MIMEText
 from urllib import urlopen
 from xml.etree.ElementTree import parse
 from xml.sax import saxutils, handler, make_parser
+import ast
 import base64
 import copy
+import csv
+import datetime
 import email.utils
 import getpass
 import os
@@ -15,9 +18,11 @@ import re
 import readline
 import smtplib
 import stat
+import sys
 import time
 
 import argparse
+import numpy
 import pingdomlib
 
 
@@ -35,6 +40,170 @@ considering adding plotting of traceroute results over
 time using matplotlib for path analysis.
 """
 
+class ASCII_Chart(object):
+    '''Class to init, load, store
+    an ASCII chart for whatever use you have.
+    Will include code to count instances of
+    a particular character.
+    '''
+    
+    def __init__(self):
+        '''Initialize self.ascii_chart
+        '''
+        self.ascii_chart = {}
+        self.count = numpy.zeros(256,dtype=int)
+        self.position = {}
+        for i in range(256):
+            self.position[i] = []
+        self.load_ascii('ascii.pkl')
+        
+    
+    def __len__(self):
+        '''allow a check of length for
+        logic testing to see if a variable
+        points to an ascii class object.
+        '''
+        return 1
+    
+    def zero_count(self):
+        self.count = numpy.zeros(256,dtype=int)
+        self.position = {}
+        for i in range(256):
+            self.position[i] = []
+        
+    
+    def create_ascii_from_csv(self,filename):
+        '''Load in a csv file of ascii
+        characters into a dictionary
+        '''
+        if 'debug' in globals() and debug > 0:
+            print "Enter create ascii"
+        self.ascii_chart = {}
+        header = []
+        first = 1
+        f = open('ascii.csv','rb')
+        try:
+            reader = csv.reader(f)
+            for row in reader:
+                if 'debug' in globals() and debug > 0:
+                    print row
+                if first > 0:
+                    header = deepcopy(row)
+                    first = 0
+                else:
+                    rnum = int(row[0])
+                    self.ascii_chart[rnum] = {}
+                    self.ascii_chart[rnum]['int'] = rnum
+                    self.ascii_chart[rnum]['symbol'] = str(row[4])
+                    self.ascii_chart[rnum]['html_num'] = str(row[5])
+                    self.ascii_chart[rnum]['html_name'] = str(row[6]).strip()
+                    self.ascii_chart[rnum]['desc'] = str(row[7])
+        finally:
+            f.close()
+    
+    def load_ascii(self,filename = 'ascii.pkl'):
+        """Loads a pickled ascii chart
+        """
+        if 'debug' in globals() and debug > 0:
+            print "Enter load ascii"
+        if os.path.exists(filename):
+            infile = open(filename,'rb')
+            self.ascii_chart = pickle.load(infile)
+            infile.close()
+        else:
+            print "Error: file %s not found" % filename
+    
+    def store_ascii(self,filename):
+        """Stores a pickled ascii chart
+        """
+        if 'debug' in globals() and debug > 0:
+            print "Enter store ascii"
+            outfile = open(filename,'wb')
+            pickle.dump(self.ascii_chart,outfile)
+            outfile.close()
+            os.chmod(filename, stat.S_IRWXU)
+    
+    def create_ascii_python(self):
+        '''Create python definition code for class
+        '''
+        print "self.ascii_chart = {}"
+        for key in self.ascii_chart.keys():
+            print "self.ascii_chart[%d] = {}" % int(key)
+            for key2 in self.ascii_chart[int(key)].keys():
+                if key2.find('int') == 0:
+                    value = self.ascii_chart[key][key2]
+                    print "self.ascii_chart[%d][%s] = %d" % (int(key),repr(key2),value)
+                else:
+                    value = self.ascii_chart[key][key2]
+                    print "self.ascii_chart[%d][%s] = %s" % (int(key),repr(key2),repr(value))
+    
+    def init_ascii_chart(self):
+        '''Manually initialize the ascii_chart
+        '''
+    
+    def count_chars(self,input_string):
+        '''Method to increment the counters in
+        self.count for each character found
+        '''
+        for index in range(len(input_string)):
+            self.count[ord(input_string[index])] += 1
+            self.position[ord(input_string[index])].append(int(index))
+    
+    def return_found(self):
+        '''Method to return dictionary
+        of characters found and their count
+        '''
+        found_dict = {}
+        for charnum in self.count.nonzero()[0]:
+            found_dict[self.ascii_chart[charnum]['symbol']] = {}
+            found_dict[self.ascii_chart[charnum]['symbol']]['count'] = self.count[charnum]
+            found_dict[self.ascii_chart[charnum]['symbol']]['location'] = copy.deepcopy(self.position[charnum])
+        return found_dict
+    
+    def is_ip_address(self,input_string):
+        '''Method to basic sanity check if a string is
+        an IP address by looking for four periods and only
+        the numbers zero through 9
+        '''
+        ip_str = '^([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.([01]'+\
+                 '?\\d\\d?|2[0-4]\\d|25[0-5])\\.([01]?\\d\\d'+\
+                 '?|2[0-4]\\d|25[0-5])\\.([01]?\\d\\d?|2[0-4]'+\
+                 '\\d|25[0-5])$'
+        pattern = re.compile(ip_str)
+        x = pattern.match(input_string)
+        if repr(x) == 'None':
+            return False
+        else:
+            return True
+    
+    def is_ip_addr_w_paren(self,input_string):
+        '''Method to basic sanity check if a string is
+        an IP address by looking for four periods and only
+        the numbers zero through 9
+        '''
+        ip_str = '^\\(?([01]?\\d\\d?|2[0-4]\\d|25[0-5])'+\
+                 '\\.([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.'+\
+                 '([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.'+\
+                 '([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\)?$'
+        pattern = re.compile(ip_str)
+        x = pattern.match(input_string)
+        if repr(x) == 'None':
+            return False
+        else:
+            return True
+        
+    def ip_to_acl(self,input_string):
+        '''Method to take an IP address string/mask
+        and turn it into a Cisco ACL inverted string
+        '''
+        if self.is_ip_address(input_string):
+            q1,q2,q3,q4 = input_string.split('.')
+            return '.'.join([255-int(q1),255-int(q2),255-int(q3),255-int(q4)])
+        else:
+            print "Invalid IP Address/Mask [%s] specified" % input_string
+        return ''
+
+
 class Pingdom(object):
     """Class to manage a pingdom account
     """
@@ -42,6 +211,13 @@ class Pingdom(object):
         self.cred = {}
         self.probes = {}
         self.server = None
+        self.results = ''
+        self.probe = ''
+        self.target = ''
+        self.hops_dict = {}
+        self.hops = 0
+        self.plot_dict = {}
+        self.tr_date = ''
         self.checks = {}
         self.check_count = 0
         self.paused = 0
@@ -50,6 +226,7 @@ class Pingdom(object):
         self.actions = {}
         self.alert_policy = {}
         self.alert_xref = {}
+        self.load_credentials()
         return
     
     def set_credentials(self):
@@ -153,27 +330,58 @@ class Pingdom(object):
         used by Pingdom
         """
         probelist = self.server.probes()
+        self.probe_by_country = {}
         for num in range(len(probelist)):
-            self.probes[int(probelist[num]['id'])] = {}
-            self.probes[int(probelist[num]['id'])]['id'] = int(probelist[num]['id'])
-            self.probes[int(probelist[num]['id'])]['active'] =  bool(probelist[num]['active'])
-            self.probes[int(probelist[num]['id'])]['city'] =  str(probelist[num]['city'])
-            self.probes[int(probelist[num]['id'])]['country'] =  str(probelist[num]['country'])
-            self.probes[int(probelist[num]['id'])]['countryiso'] =  str(probelist[num]['countryiso'])
-            self.probes[int(probelist[num]['id'])]['hostname'] =  str(probelist[num]['hostname'])
-            self.probes[int(probelist[num]['id'])]['ip'] =  str(probelist[num]['ip'])
-            self.probes[int(probelist[num]['id'])]['name'] =  str(probelist[num]['name'])
+            if bool(probelist[num]['active']):
+                ciso = str(probelist[num]['countryiso'])
+                cid = int(probelist[num]['id'])
+                self.probes[cid] = {}
+                self.probes[cid]['id'] = cid
+                self.probes[cid]['active'] =  bool(probelist[num]['active'])
+                self.probes[cid]['city'] =  str(probelist[num]['city'])
+                self.probes[cid]['country'] =  str(probelist[num]['country'])
+                self.probes[cid]['countryiso'] = ciso
+                if ciso not in self.probe_by_country.keys():
+                    self.probe_by_country[ciso] = {}
+                if cid not in self.probe_by_country[ciso].keys():
+                    self.probe_by_country[ciso][cid] = cid
+                self.probes[cid]['hostname'] =  str(probelist[num]['hostname'])
+                self.probes[cid]['ip'] =  str(probelist[num]['ip'])
+                self.probes[cid]['name'] =  str(probelist[num]['name'])
+        return
+    
+    def print_probes(self):
+        '''Method to output the current active probe list
+        '''
+        if len(self.probes) < 1:
+            self.get_probes()
+        print
+        for probenum in sorted(self.probes.keys()):
+            if self.probes[probenum]['active']:
+                print " [%02d] (%s) %s %s %s" % (probenum,self.probes[probenum]['countryiso'],\
+                                                        self.probes[probenum]['name'],\
+                                                         self.probes[probenum]['hostname'],\
+                                                         self.probes[probenum]['ip'])
+        print
+        print "Probes by Country:"
+        print
+        for ciso in sorted(self.probe_by_country.keys()):
+            print " [%02s]" % ciso,
+            for probe in sorted(self.probe_by_country[ciso].keys()):
+                print "(%02d) %s" % (probe,self.probes[probe]['name']),
+            print
+        print
         return
     
     def get_us_probe(self):
         """
         Method to yield probe(s) located in the US
         """
-        for probe in sorted(self.probes.keys()):
-            if self.probes[probe]['countryiso'].find('US') == 0 and\
-               bool(self.probes[probe]['active']):
-                return probe
-        return None
+        usprobes = list(self.probe_by_country['US'])
+        if len(usprobes) > 0:
+            return usprobes[0]
+        else:
+            return None
     
     def get_checks(self):
         """
@@ -297,6 +505,287 @@ class Pingdom(object):
         if 'debug' in globals() and debug > 0:
             print "Enabled checks: %03d   Paused checks: %03d   Total checks: %03d" % \
                                           (self.enabled, self.paused, self.check_count)
+    
+    def traceroute(self,probe,target,printout = True):
+        '''Method to perform the traceroute and return the results
+        By default prints out results unless printout = False is sent.
+        '''
+        self.server = pingdomlib.Pingdom(self.cred['Username'],\
+                                              base64.b64decode(self.cred['Password']),\
+                                              self.cred['apikey'])
+        self.get_probes()
+        self.probe = probe
+        self.target = target
+        scandate = datetime.datetime.now()
+        if self.probe in self.probes.keys():
+            if printout:
+                print "\nTracing path to %s from Pingdom Probe Server #%d (%s)\n" % \
+                      (self.target,self.probe,self.probes[self.probe]['name'])
+            self.tr_date = str(scandate.month)+'/'+\
+                str(scandate.day)+'/'+\
+                str(scandate.year)+' '+\
+                str(scandate.hour)+":"+\
+                str(scandate.minute)+':'+\
+                str(scandate.second)
+            self.results = self.server.traceroute(self.target,self.probe)
+            if printout:
+                print self.results['result']
+                print
+            return
+        else:
+            probenum = self.get_us_probe()
+            if probenum is not None:
+                if printout:
+                    print "Probe #%d not found - using #%d (%s)" % \
+                          (self.probe,probenum,self.probes[probenum]['name'])
+                    print "\nTracing path to %s from Pingdom Probe Server #%d (%s)\n" % \
+                          (self.target,probenum,self.probes[probenum]['name'])
+                self.tr_date = str(scandate.month)+'/'+\
+                    str(scandate.day)+'/'+\
+                    str(scandate.year)+' '+\
+                    str(scandate.hour)+":"+\
+                    str(scandate.minute)+':'+\
+                    str(scandate.second)
+                self.probe = probenum
+                self.results = self.server.traceroute(self.target,self.probe)
+                if printout:
+                    print self.results['result']
+                    print
+                return
+            else:
+                if printout:
+                    print "probe %d not found and no active US probe found"
+        return
+    
+    def count_chars(self,inline,ascii = ''):
+        '''Method to determine and return a count of asterisks in a line
+        '''
+        if len(ascii) < 1:
+            ascii = ASCII_Chart()
+        ascii.count_chars(inline)
+        char_dict = ascii.return_found()
+        return char_dict
+    
+    def reduce_spaces(self,inline):
+        '''replace any multiple space
+        instances with one space.
+        '''
+        if type(inline) is not str:
+            inline = str(inline)
+        return re.sub('(?:\ ){2,99}',' ',inline).strip().rstrip()
+    
+    def parse_hops(self):
+        '''Method to parse the results lines and return
+        three strings with either the hop results
+        or a zero length string for hop failure.
+        '''
+        if 'debug' in globals() and debug > 1:
+            print "in parse_hops"
+        if 'result' in self.results.keys() and len(self.results['result']) > 0:
+            if 'debug' in globals() and debug > 1:
+                print "in parse_hops"
+                print "inline = <%s>" % inline
+            hopnum,inline = self.reduce_spaces(inline).split(' ',1)
+            hopnum = int(hopnum)
+            if 'debug' in globals() and debug > 1:
+                print "Now:"
+                print "inline = <%s>" % inline
+                print "hopnum = %d" % hopnum
+            char_dict = self.count_chars(inline)
+            if len(self.hops_dict) < 1:
+                for i in range(1,31):
+                    self.hops_dict[i] = {}
+                    for j in range(1,4):
+                        self.hops_dict[i][j] = {}
+                        self.hops_dict[i][j]['hostname'] = ''
+                        self.hops_dict[i][j]['hostip'] = ''
+                        self.hops_dict[i][j]['time'] = 0
+            if '*' in char_dict.keys():
+                if char_dict['*']['count'] > 2:
+                    try1 = ''
+                    try2 = ''
+                    try3 = ''
+                elif char_dict['*']['count'] > 1:
+                    inlinelen = len(inline)
+                    if 0 in char_dict['*']['location'] and \
+                       (inlinelen-1) in char_dict['*']['location']: # value in middle
+                        try1 = ''
+                        try3 = ''
+                        try2 = inline.split('*')[1].strip().rstrip()
+                    elif 0 in char_dict['*']['location']: # value at end
+                        try1 = ''
+                        try2 = ''
+                        try3 = inline.split('*')[2].strip().rstrip()
+                    else: # value at beginning
+                        try2 = ''
+                        try3 = ''
+                        try1 = inline.split('*')[0].strip().rstrip()
+                else:
+                    inlinelen = len(inline)
+                    if 0 in char_dict['*']['location']: # star at beginning
+                        inline = inline.split('*')[1].strip().rstrip()
+                        ms = inline.find('ms ')
+                        try1 = ''
+                        try2 = inline[0:ms+2]
+                        try3 = inline[ms+3:]
+                    elif (inlinelen-1) in char_dict['*']['location']: # star at end
+                        inline = inline.split('*')[0].strip().rstrip()
+                        ms = inline.find('ms ')
+                        try3 = ''
+                        try1 = inline[0:ms+2]
+                        try2 = inline[ms+3:]
+                    else: # star in middle
+                        try2 = ''
+                        try1 = inline.split('*')[0].strip().rstrip()
+                        try3 = inline.split('*')[1].strip().rstrip()
+            else: # no stars - now find out how many different ips in hop and process
+                if char_dict['(']['count'] > 2: # three different hop ip's
+                    try1 = inline.split(' ms')[0].strip().rstrip()+' ms'
+                    try2 = inline.split(' ms')[1].strip().rstrip()+' ms'
+                    try3 = inline.split(' ms')[2].strip().rstrip()+' ms'
+                elif char_dict['(']['count'] > 1: # two hop ips one with two values
+                    if inline.split(' ms')[1].find('(') > 0: # second ip has two values
+                        try1 = inline.split(' ms')[0].strip().rstrip()+' ms'
+                        try2 = inline.split(' ms')[1].strip().rstrip()+' ms'
+                        try2hostname = inline.split(' ms')[1].strip().rstrip().split(' ')[0]
+                        try2hostip = inline.split(' ms')[1].strip().rstrip().split(' ')[1]
+                        try3time = inline.split(' ms')[2].strip().rstrip()
+                        try3 = try2hostname + ' ' + try2hostip + ' ' + try3time + ' ms'
+                    else: # first IP has two values
+                        try1 = inline.split(' ms')[0].strip().rstrip()+' ms'
+                        try1hostname = inline.split(' ms')[0].strip().rstrip().split(' ')[0]
+                        try1hostip = inline.split(' ms')[0].strip().rstrip().split(' ')[1]
+                        try2time = inline.split(' ms')[1].strip().rstrip()
+                        try2 = try1hostname + ' ' + try1hostip + ' ' + try2time + ' ms'
+                        try3 = inline.split(' ms')[2].strip().rstrip()+' ms'
+                else: # one hop three values
+                    try1 = inline.split(' ms')[0].strip().rstrip()+' ms'
+                    hostname = inline.split(' ms')[0].split(' ')[0].strip().rstrip()
+                    hostip = inline.split(' ms')[0].split(' ')[1].strip().rstrip()
+                    try2time = inline.split(' ms')[1].strip().rstrip()
+                    try3time = inline.split(' ms')[2].strip().rstrip()
+                    try2 = hostname + ' ' + hostip + ' ' + try2time + ' ms'
+                    try3 = hostname + ' ' + hostip + ' ' + try3time + ' ms'
+            
+            hops = {}
+            hops[1] = {}
+            hops[2] = {}
+            hops[3] = {}
+            
+            if len(try1) < 1:
+                hops[1]['hostname'] = ''
+                hops[1]['hostip'] = ''
+                hops[1]['time'] = 0
+            else:
+                hops[1]['hostname'] = try1.split(' ')[0]
+                hops[1]['hostip']   = try1.split(' ')[1].replace('(','').replace(')','')
+                hops[1]['time'] = int(round(float(try1.split(' ')[2])))
+            
+            if len(try2) < 1:
+                hops[2]['hostname'] = ''
+                hops[2]['hostip'] = ''
+                hops[2]['time'] = 0
+            else:
+                hops[2]['hostname'] = try2.split(' ')[0]
+                hops[2]['hostip']   = try2.split(' ')[1].replace('(','').replace(')','')
+                hops[2]['time'] = int(round(float(try2.split(' ')[2])))
+            
+            if len(try3) < 1:
+                hops[3]['hostname'] = ''
+                hops[3]['hostip'] = ''
+                hops[3]['time'] = 0
+            else:
+                hops[3]['hostname'] = try3.split(' ')[0]
+                hops[3]['hostip']   = try3.split(' ')[1].replace('(','').replace(')','')
+                hops[3]['time'] = int(round(float(try3.split(' ')[2])))
+            if 'debug' in globals() and debug > 2:
+                print "hops dict:"
+                pprint.pprint(hops)
+            for i in range(1,4):
+                if 'debug' in globals() and debug > 2:
+                    print "i = %d" % i
+                    print "hopnum = %d" % hopnum
+                    print "self.hops_dict[hopnum]:"
+                    pprint.pprint(self.hops_dict[hopnum])
+                    print "hops[i]:"
+                    pprint.pprint(hops[i])
+                hostname = hops[i]['hostname'][:]
+                if 'debug' in globals() and debug > 2:
+                    print "hostname copy = <%s>" % hostname
+                self.hops_dict[hopnum][i]['hostname'] = hostname
+                if 'debug' in globals() and debug > 2:
+                    print "hops_dict[%d][%d][hostname] = <%s>" % (hopnum,i,self.hops_dict[hopnum][i]['hostname'])
+                hostip = hops[i]['hostip'][:]
+                self.hops_dict[hopnum][i]['hostip'] = hostip
+                if 'debug' in globals() and debug > 2:
+                    print "hops_dict[%d][%d][hostip] = <%s>" % (hopnum,i,self.hops_dict[hopnum][i]['hostip'])
+                hoptime = int(hops[i]['time'])
+                self.hops_dict[hopnum][i]['time'] = hoptime
+                if 'debug' in globals() and debug > 2:
+                    print "hops_dict[%d][%d][time] = <%d>" % (hopnum,i,self.hops_dict[hopnum][i]['time'])
+                    print "hops_dict[hopnum] now:"
+                    pprint.pprint(self.hops_dict[hopnum])
+        self.hops = len(self.hops_dict)
+        return
+    
+    def trim_hops_dict(self):
+        '''Method to find the last successful hop in a traceroute
+        and set the number of hops to that value and truncate dict
+        to the last good hop
+        '''
+        maxhops = len(self.hops_dict)
+        good_hop = 0
+        for i in range(maxhops,0,-1):
+            for j in range(3,0,-1):
+                if good_hop == 0 and len(self.hops_dict[i][j]['hostname']) > 0:
+                    good_hop = int(i)
+            if good_hop == 0:
+                del self.hops_dict[i]
+        self.hops = len(self.hops_dict)
+        return
+    
+    def make_plot_dict(self,option='max'):
+        '''Method to take hops_dict and turn into single hop
+        records for zoho selecting the max, min, or average
+        of the three hops
+        '''
+        
+        self.plot_dict = {}
+        req_date = self.tr_date
+        plotname = self.target + '-P' + str(self.probe)
+        self.plot_dict[req_date] = {}
+        self.plot_dict[req_date]['Hops'] = int(self.hops)
+        self.plot_dict[req_date]['Src'] = self.probes[self.probe]['ip']
+        self.plot_dict[req_date]['Dst'] = self.target
+        self.plot_dict[req_date]['Data'] = []
+        self.plot_dict[req_date]['Hopname'] = []
+        self.plot_dict[req_date]['HopIP'] = []
+        for hopnum in range(1,self.hops+1):
+            hopmin = -1
+            hopmax = 0
+            hopavg = 0
+            hopmed = 0
+            hopcount = 0
+            hopttl = 0
+            hoptimelist = list(self.hops_dict[hopnum][1]['time'],\
+                               self.hops_dict[hopnum][2]['time'],\
+                               self.hops_dict[hopnum][3]['time'])
+            hopnamelist = list(self.hops_dict[hopnum][1]['hostname'],\
+                               self.hops_dict[hopnum][2]['hostname'],\
+                               self.hops_dict[hopnum][3]['hostname'])
+            hopiplist = list(self.hops_dict[hopnum][1]['hostip'],\
+                               self.hops_dict[hopnum][2]['hostip'],\
+                               self.hops_dict[hopnum][3]['hostip'])
+            hopmin = int(numpy.min(numpy.array(hoptimelist)))
+            hopmax = int(numpy.max(numpy.array(hoptimelist)))
+            hopavg = int(numpy.average(numpy.array(hoptimelist)))
+            hopmed = int(numpy.median(numpy.array(hoptimelist)))
+            if options.find('max') >= 0:
+                self.plot_dict[req_date]['Data'].append(int(hopmax))
+            self.plot_dict[req_date]['Hopname'].append(str(self.hops_dict[hopnum][i]['hostname']))
+            self.plot_dict[req_date]['HopIP'].append(str(self.hops_dict[hopnum][i]['hostip']))
+        return
+
 
 def getnetowner(subnet):
     """method to call whois.arin.net for a network reference
@@ -364,6 +853,17 @@ def getnetowner(subnet):
         owner_recs[str(name)] = att
     return owner_recs
 
+
+def parse_trace_result(result):
+    '''Method to take the single string 
+    traceroute output and turn it into a list we can work with.
+    '''
+    if len(result) > 0 and result.find('\n') > 0:
+        hops = []
+        rawlist = result.split('\n')
+        for hopnum in range(1,len(rawlist)):
+            pass
+    pass
 
 def cmd_modify_single_check(args):
     '''Called from main() to enable or disable one or all check(s)
@@ -578,6 +1078,9 @@ def cmd_modify_group_checks(args):
     os.system(command)
     return {'args': args, 'pingdom': mypingdom, 'resultmsg': resultmsg}
 
+def median(lst):
+    return numpy.median(numpy.array(lst))
+
 def cmd_netwhois(args):
     '''Called from main() to perform an ARIN whois
     lookup on a specified IP address
@@ -613,35 +1116,26 @@ def cmd_traceroute(args):
     mypingdom = Pingdom()
     if askpass:
         mypingdom.input_credentials()
-    else:
-        mypingdom.load_credentials()
+    mypingdom.traceroute(probe,target)
+    return { 'pingdom': mypingdom, 'probe': probe,'target': target}
+
+def cmd_list_probes(args):
+    '''Called from main() to list probe locations.
+    '''
+    global debug
+    debug = int(args['debug'])
+    askpass = bool(args['askpass'].find('True') >= 0)
+    if 'debug' in globals() and debug > 0:
+        print "Enter cmd_list_probes"
+    mypingdom = Pingdom()
+    if askpass:
+        mypingdom.input_credentials()
     mypingdom.server = pingdomlib.Pingdom(mypingdom.cred['Username'],\
                                           base64.b64decode(mypingdom.cred['Password']),\
                                           mypingdom.cred['apikey'])
     mypingdom.get_probes()
-    if probe in mypingdom.probes.keys() and \
-                bool(mypingdom.probes[probe]['active']):
-        print "\nTracing path to %s from Pingdom Probe Server #%d (%s)\n" % \
-              (target,probe,mypingdom.probes[probe]['name'])
-        results = mypingdom.server.traceroute(target,probe)
-        print results['result']
-        print
-        return {'pingdom': mypingdom, 'results': results }
-    else:
-        probenum = mypingdom.get_us_probe()
-        if probenum is not None:
-            print "Probe #%d not found - using #%d (%s)" % \
-                  (probe,probenum,mypingdom.probes[probenum]['name'])
-            print "\nTracing path to %s from Pingdom Probe Server #%d (%s)\n" % \
-                  (target,probenum,mypingdom.probes[probenum]['name'])
-            results = mypingdom.server.traceroute(target,probenum)
-            print results['result']
-            print
-            return {'pingdom': mypingdom, 'results': results }
-            
-        else:
-            print "probe %d not found and no active US probe found"
-    return {}
+    mypingdom.print_probes()
+    return { 'pingdom': mypingdom}
 
 def cmd_check_paused(args):
     '''Called from main() to check and make sure
@@ -772,6 +1266,13 @@ def main():
     paused_parser.add_argument('-i', action='store_true', default = False,\
                     dest='askpass', help='Prompt for credentials to use')
     
+    probe_parser = subparsers.add_parser('probes',\
+                    help = 'List pingdom probe sites')
+    probe_parser.set_defaults(func=cmd_list_probes)
+    probe_parser.add_argument('-debug', action='store', type = int, default=0,\
+                    dest='debug', help='Debug level 0-9')
+    probe_parser.add_argument('-i', action='store_true', default = False,\
+                    dest='askpass', help='Prompt for credentials to use')
     
     cl = {}
     args = {}
