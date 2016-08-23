@@ -473,6 +473,38 @@ def create_dict(ssl_scan):
                           ssl_scan['scans'][hostname]['results']\
                             ['endpoints'][endpt]['details']['chain']\
                             ['certs'][0]['keySize']
+                    data_dict[rec_key]['notBefore'] = ''
+                    if 'details' in ssl_scan['scans'][hostname]['results']['endpoints']\
+                       [endpt].keys() and \
+                       'chain' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt]\
+                       ['details'].keys() and \
+                       'certs' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt]\
+                       ['details']['chain'].keys() and \
+                       'notBefore' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt]\
+                       ['details']['chain']['certs'][0].keys():
+                        data_dict[rec_key]['notBefore'] = \
+                          str(iso2zoho(datetime.datetime.isoformat(\
+                                datetime.datetime.utcfromtimestamp(\
+                                  ssl_scan['scans'][hostname]\
+                                    ['results']['endpoints'][endpt]\
+                                    ['details']['chain']\
+                                    ['certs'][0]['notBefore']/1000))))
+                    data_dict[rec_key]['notAfter'] = ''
+                    if 'details' in ssl_scan['scans'][hostname]['results']['endpoints']\
+                       [endpt].keys() and \
+                       'chain' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt]\
+                       ['details'].keys() and \
+                       'certs' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt]\
+                       ['details']['chain'].keys() and \
+                       'notAfter' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt]\
+                       ['details']['chain']['certs'][0].keys():
+                        data_dict[rec_key]['notAfter'] = \
+                          str(iso2zoho(datetime.datetime.isoformat(\
+                                datetime.datetime.utcfromtimestamp(\
+                                  ssl_scan['scans'][hostname]\
+                                    ['results']['endpoints'][endpt]\
+                                    ['details']['chain']\
+                                    ['certs'][0]['notAfter']/1000))))
                     data_dict[rec_key]['Warnings'] = 'No'
                     if 'hasWarnings' in ssl_scan['scans'][hostname]['results']['endpoints'][endpt].keys() and \
                         str(ssl_scan['scans'][hostname]['results']['endpoints'][endpt]['hasWarnings']).find('True') == 0:
@@ -577,7 +609,9 @@ def upload_dict(data_dict,token):
                  'TLSv1.3': data_dict[reckey]['TLSv1.3'],\
                  'Warnings': data_dict[reckey]['Warnings'],\
                  'Weak_Ciphers': data_dict[reckey]['Weak_Ciphers'],\
-                 'Weak_Protos': data_dict[reckey]['Weak_Protos']}
+                 'Weak_Protos': data_dict[reckey]['Weak_Protos'],\
+                 'notBefore': data_dict[reckey]['notBefore'],\
+                 'notAfter': data_dict[reckey]['notAfter']}
         conn_ok = 1
         while conn_ok == 1:
             try:
@@ -636,7 +670,9 @@ def upload_dict(data_dict,token):
                'TLSv1.3': data_dict[reckey]['TLSv1.3'],\
                'Warnings': data_dict[reckey]['Warnings'],\
                'Weak_Ciphers': data_dict[reckey]['Weak_Ciphers'],\
-               'Weak_Protos': data_dict[reckey]['Weak_Protos']}
+               'Weak_Protos': data_dict[reckey]['Weak_Protos'],\
+               'notBefore': data_dict[reckey]['notBefore'],\
+               'notAfter': data_dict[reckey]['notAfter']}
             conn_ok = 1
             while conn_ok == 1:
                 if 'debug' in globals() and debug > 0:
