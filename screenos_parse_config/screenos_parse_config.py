@@ -13,23 +13,40 @@ class Address(object):
     Class to contain address definitions
     for hosts or subnets
     """
-    def __init__(self,addrname,zone):
+    def __init__(self,addrname,zone,mapto=''):
         if 'debug' in globals() and debug > 1:
             print "init address %s" % addrname
         self.name = str(addrname)
         self.zone = zone
-        self.addr = ''
+        self.mapto = str(mapto)
+        self.addr = {}
         self.comment = ''
+        self.duplicates = {}
+        self.duplicates['count'] = 0
         self.group = False
         return
     
-    def add_addr(self,addr):
+    def add_addr(self,addr,zone):
         """
         Method to add an IP address to an address object
         """
         if 'debug' in globals() and debug > 0:
             print "in add_addr %s" % addr
-        self.addr = str(addr)
+        if addr in self.addr.keys():
+            self.duplicates['count'] += 1
+            self.duplicates[self.duplicates['count']] = "["+zone.zonename+":"+self.name+"] "+addr
+        self.addr[addr] = str(addr)
+        return
+    
+    def print_duplicatelist(self):
+        """
+        Method to print out a list of duplicates found during adds
+        """
+        if self.duplicates['count'] > 0:
+            print "%0d duplicates found for [%s:%s]" % (self.duplicates['count'],self.zone.zonename,self.name)
+            for num in sorted(self.duplicates.keys()):
+                if type(num) is int:
+                    print "    %0d: %s" % (num,self.duplicates[num])
         return
     
     def add_comment(self,comment):
@@ -48,29 +65,57 @@ class Address(object):
         if spaces > 0:
             print " "*(spaces-1),
         if negated:
-            print "*NOT* [%s]: %s *NOT*" % (self.name,self.addr)
+            for addr in sorted(self.addr.keys()):
+                if len(self.mapto) > 0:
+                    print "*NOT* [%s:%s]: %s -> %s *NOT*" % (self.zone.zonename,
+                                                           self.name,
+                                                           self.addr[addr],
+                                                           self.mapto)
+                else:
+                    print "*NOT* [%s:%s]: %s *NOT*" % (self.zone.zonename,self.name,self.addr[addr])
         else:
-            print "[%s]: %s" % (self.name,self.addr)
+            for addr in sorted(self.addr.keys()):
+                if len(self.mapto) > 0:
+                    print "[%s:%s]: %s -> %s" % (self.zone.zonename,
+                                               self.name,
+                                               self.addr[addr],
+                                               self.mapto)
+                else:
+                    print "[%s:%s]: %s" % (self.zone.zonename,self.name,self.addr[addr])
+        return
+    
+    def print_comment(self,spaces=0,negated=False):
+        """
+        Method to print out the comment line
+        """
+        if spaces > 0:
+            print " "*(spaces-1),
+        print "%s" % self.comment
         return
 
 class AddressGroup(object):
     """
     Class to contain groups of addresses
     """
-    def __init__(self,groupname,zone,parent):
+    def __init__(self,groupname,zone):
         if 'debug' in globals() and debug > 1:
             print "in init group %s" % groupname
         self.name = str(groupname)
         self.zone = zone
         self.addr = {}
+        self.mapto = ''
         self.comment = ''
+        self.duplicates = {}
+        self.duplicates['count'] = 0
         self.group = True
-        self.parent = parent
         
     def add_addr(self,addrname,addr):
         """
         Method to add an address to the address group
         """
+        if addr in self.addr.keys():
+            self.duplicates['count'] += 1
+            self.duplicates[self.duplicates['count']] = "["+zone.zonename+":"+self.name+"] "+addr
         if str(addrname) not in self.addr.keys():
             self.addr[str(addrname)] = addr
         return
@@ -89,11 +134,22 @@ class AddressGroup(object):
         if spaces > 0:
             print " "*(spaces-1),
         if negated:
-            print "*NOT* Address group: [%s] *NOT*" % self.name
+            print "*NOT* Address group: [%s:%s] *NOT*" % (zelf.zone.zonename,self.name)
         else:
-            print "Address group: [%s]" % self.name
-        for address in self.addr.keys():
+            print "Address group: [%s:%s]" % (self.zone.zonename,self.name)
+        for address in sorted(self.addr.keys()):
             self.addr[address].print_address(spaces+2)
+        return
+    
+    def print_duplicatelist(self):
+        """
+        Method to print out a list of duplicates found during adds
+        """
+        if self.duplicates['count'] > 0:
+            print "%0d duplicates found for [%s:%s]" % (self.duplicates['count'],self.zone.zonename,self.name)
+            for num in sorted(self.duplicates.keys()):
+                if type(num) is int:
+                    print "    %0d: %s" % (num,self.duplicates[num])
         return
 
 class Zone(object):
@@ -105,9 +161,15 @@ class Zone(object):
     def __init__(self,zonename):
         if 'debug' in globals() and debug > 1:
             print "init zone %s" % zonename
-        self.zonename = str(zonename)
+        self.zonename = str(zonename).replace("\"","")
         self.addresses = {}
+        self.duplicates = {}
         return
+    
+    def __len__(self):
+        '''Method to let me check for zone
+        '''
+        return 1
     
     def add_address(self,address):
         """
@@ -228,7 +290,7 @@ class PolicyItem(object):
     """
     Object to contain a policy rule
     """
-    def __init__(self,policynum):
+    def __init__(self,policynum,parent):
         if 'debug' in globals() and debug > 1:
             print "in init policyItem %d" % policynum
         self.number = int(policynum)
@@ -245,6 +307,7 @@ class PolicyItem(object):
         self.interface = ''
         self.vpn = ''
         self.disabled = False
+        self.parent = parent
         return
     
     def set_from_zone(self,from_zone):
@@ -284,6 +347,16 @@ class PolicyItem(object):
         return
     
     def add_src(self,srcaddrname,srcaddr,negated=False):
+        if 'debug' in globals() and debug > 0:
+            print "in add_src with %s" % srcaddrname
+            if srcaddrname.find('MIP') >= 0:
+                print "Found MIP in the name at %d" % srcaddrname.find('MIP')
+            if srcaddrname.find('VIP') >= 0:
+                print "Found VIP in the name at %d" % srcaddrname.find('VIP')
+        if srcaddrname.find('MIP(') == 0:
+            self.parent.add_mip_policy_item(srcaddrname,self.number,'src')
+        if srcaddrname.find('VIP(') == 0:
+            self.parent.add_vip_policy_item(srcaddrname,self.number,'src')
         if srcaddrname not in self.srcaddr.keys():
             self.srcaddr[srcaddrname] = {}
             self.srcaddr[srcaddrname]['src'] = srcaddr
@@ -304,6 +377,16 @@ class PolicyItem(object):
         return
     
     def add_dst(self,dstaddrname,dstaddr,negated=False):
+        if 'debug' in globals() and debug > 0:
+            print "in add_dst with %s" % dstaddrname
+            if dstaddrname.find('MIP') >= 0:
+                print "Found MIP in the name at %d" % dstaddrname.find('MIP')
+            if dstaddrname.find('VIP') >= 0:
+                print "Found VIP in the name at %d" % dstaddrname.find('VIP')
+        if dstaddrname.find('MIP(') == 0:
+            self.parent.add_mip_policy_item(dstaddrname,self.number,'dst')
+        if dstaddrname.find('VIP(') == 0:
+            self.parent.add_vip_policy_item(dstaddrname,self.number,'dst')
         if dstaddrname not in self.dstaddr.keys():
             self.dstaddr[dstaddrname] = {}
             self.dstaddr[dstaddrname]['dst'] = dstaddr
@@ -336,7 +419,7 @@ class PolicyItem(object):
         if spaces > 0:
             print " "*(spaces-1),
         print "From:"
-        for addr in self.srcaddr.keys():
+        for addr in sorted(self.srcaddr.keys()):
             if self.srcaddr[addr]['negated']:
                 self.srcaddr[addr]['src'].print_address(spaces+4,True)
             else:
@@ -344,7 +427,7 @@ class PolicyItem(object):
         if spaces > 0:
             print " "*(spaces-1),
         print "To:"
-        for addr in self.dstaddr.keys():
+        for addr in sorted(self.dstaddr.keys()):
             if self.dstaddr[addr]['negated']:
                 self.dstaddr[addr]['dst'].print_address(spaces+4,True)
             else:
@@ -352,7 +435,7 @@ class PolicyItem(object):
         if spaces > 0:
             print " "*(spaces-1),
         print "Services:"
-        for service in self.dstsvc.keys():
+        for service in sorted(self.dstsvc.keys()):
             if self.dstsvc[service]['negated']:
                 self.dstsvc[service]['svc'].print_service(spaces+4,True)
             else:
@@ -435,6 +518,7 @@ class NetScreen(object):
         self.protocols[6] = "TCP"
         self.protocols[17] = "UDP"
         self.protocols[47] = "GRE"
+        self.protocols[58] = "ICMP6"
         self.protocols[89] = "OSPF"
         self.protocols[132] = "SCTP"
         self.found_service = False
@@ -444,6 +528,18 @@ class NetScreen(object):
         self.found_zone = False
         self.found_interface = False
         self.found_policy = False
+        self.mips = {}
+        self.mipstarget = {}
+        self.mipsintf = {}
+        self.vips = {}
+        self.vipstarget = {}
+        self.vipsintf = {}
+        self.vipssrc = {}
+        self.vipsdst = {}
+        self.dips = {}
+        self.dipsdef = {}
+        self.dipsintf = {}
+        
         self._init_any()
         if 'debug' in globals() and debug > 0:
             print "Calling load_predefined"
@@ -472,6 +568,63 @@ class NetScreen(object):
         if self.found_policy:
             self.parse_policies()
             self.parse_policy_sets()
+        return
+    
+    def add_mip(self,mipname,target,intf):
+        """
+        Method to add a dictionary of the MIP's and where they are used
+        """
+        self.mips[mipname] = {}
+        self.mipstarget[mipname] = str(target)
+        self.mipsintf[mipname] = str(intf)
+        return
+    
+    def add_vip(self,vipname,srcport,dstport,target,intf):
+        """
+        Method to add a dictionary of the VIP's and where they are used
+        """
+        self.vips[vipname] = {}
+        self.vipstarget[vipname] = str(target)
+        self.vipsintf[vipname] = str(intf)
+        self.vipssrc[vipname] = str(srcport)
+        self.vipsdst[vipname] = str(dstport)
+        return
+    
+    def add_dip(self,dipnum,dipdef,intf):
+        """
+        Method to add a dictionary of the DIP's and where they are used
+        """
+        self.dips[dipnum] = {}
+        self.dipsdef[dipnum] = str(dipdef)
+        self.dipsintf[dipnum] = str(intf)
+        return
+    
+    def add_mip_policy_item(self,mipname,item,srcdst):
+        """
+        Method to add a policy item to the mip dictionary
+        """
+        self.mips[mipname][int(item)] = srcdst+"/Policy ID "+str(item)
+        return
+    
+    def add_vip_policy_item(self,vipname,item,srcdst):
+        """
+        Method to add a policy item to the vip dictionary
+        """
+        self.vips[vipname][int(item)] = srcdst+"/Policy ID "+str(item)
+        return
+    
+    def add_zone(self,zonename):
+        """
+        Method to add a zone to the dictionary
+        """
+        zonename = zonename.replace("\"","")
+        if zonename in self.zones.keys():
+            if 'debug' in globals() and debug > 0:
+                print "Zone %s eady exists - ignoring add" % zonename
+        else:
+            if 'debug' in globals() and debug > 0:
+                print "Adding Zone %s" % zonename
+            self.zones[zonename] = Zone(zonename)
         return
     
     def _find_sections(self,filename):
@@ -519,13 +672,27 @@ class NetScreen(object):
         Method to initialize the default definitions
         of "Any" in addresses or services
         """
-        self.zones['Global'] = Zone('Global')
+        self.add_zone('Global')
         self.addresses['Any'] = Address('Any',self.zones['Global'])
-        self.addresses['Any'].add_addr('0.0.0.0/0')
+        self.addresses['Any'].add_addr('0.0.0.0/0','Global')
         self.addresses['ANY'] = Address('ANY',self.zones['Global'])
-        self.addresses['ANY'].add_addr('0.0.0.0/0')
+        self.addresses['ANY'].add_addr('0.0.0.0/0','Global')
         self.services['Any'] = Service('Any',0,0,65535,0,65535)
         self.services['ANY'] = Service('ANY',0,0,65535,0,65535)
+        
+        self.addresses['Any-IPv4'] = Address('Any-IPv4',self.zones['Global'])
+        self.addresses['Any-IPv4'].add_addr('0.0.0.0/0','Global')
+        self.addresses['ANY-IPv4'] = Address('ANY-IPv4',self.zones['Global'])
+        self.addresses['ANY-IPv4'].add_addr('0.0.0.0/0','Global')
+        self.services['Any-IPv4'] = Service('Any-IPv4',0,0,65535,0,65535)
+        self.services['ANY-IPv4'] = Service('ANY-IPv4',0,0,65535,0,65535)
+        
+        self.addresses['Any-IPv6'] = Address('Any-IPv6',self.zones['Global'])
+        self.addresses['Any-IPv6'].add_addr('::/0','Global')
+        self.addresses['ANY-IPv6'] = Address('ANY-IPv6',self.zones['Global'])
+        self.addresses['ANY-IPv6'].add_addr('::/0','Global')
+        self.services['Any-IPv6'] = Service('Any-IPv6',0,0,65535,0,65535)
+        self.services['ANY-IPv6'] = Service('ANY-IPv6',0,0,65535,0,65535)
         return 
     
     def generate_predefined(self):
@@ -660,6 +827,24 @@ class NetScreen(object):
         self.services["ICMP-ANY"] = Service("ICMP-ANY",1,0,65535,0,65535)
         self.services["ICMP-INFO"] = Service("ICMP-INFO",1,0,65535,0,65535)
         self.services["ICMP-TIMESTAMP"] = Service("ICMP-TIMESTAMP",1,0,65535,0,65535)
+        self.services["ICMP6-ANY"] = Service("ICMP6-ANY",58,0,65535,0,65535)
+        self.services["ICMP6 Dst Unreach addr"] = Service("ICMP6 Dst Unreach addr",58,0,65535,0,65535)
+        self.services["ICMP6 Dst Unreach admin"] = Service("ICMP6 Dst Unreach admin",58,0,65535,0,65535)
+        self.services["ICMP6 Dst Unreach beyond"] = Service("ICMP6 Dst Unreach beyond",58,0,65535,0,65535)
+        self.services["ICMP6 Dst Unreach port"] = Service("ICMP6 Dst Unreach port",58,0,65535,0,65535)
+        self.services["ICMP6 Dst Unreach route"] = Service("ICMP6 Dst Unreach route",58,0,65535,0,65535)
+        self.services["ICMP6 Echo Reply"] = Service("ICMP6 Echo Reply",58,0,65535,0,65535)
+        self.services["ICMP6 Echo Request"] = Service("ICMP6 Echo Request",58,0,65535,0,65535)
+        self.services["ICMP6 HAAD Reply"] = Service("ICMP6 HAAD Reply",58,0,65535,0,65535)
+        self.services["ICMP6 HAAD Request"] = Service("ICMP6 HAAD Request",58,0,65535,0,65535)
+        self.services["ICMP6 MP Advertisement"] = Service("ICMP6 MP Advertisement",58,0,65535,0,65535)
+        self.services["ICMP6 MP Solicitation"] = Service("ICMP6 MP Solicitation",58,0,65535,0,65535)
+        self.services["ICMP6 Packet Too Big"] = Service("ICMP6 Packet Too Big",58,0,65535,0,65535)
+        self.services["ICMP6 Param Prob header"] = Service("ICMP6 Param Prob header",58,0,65535,0,65535)
+        self.services["ICMP6 Param Prob nexthdr"] = Service("ICMP6 Param Prob nexthdr",58,0,65535,0,65535)
+        self.services["ICMP6 Param Prob option"] = Service("ICMP6 Param Prob option",58,0,65535,0,65535)
+        self.services["ICMP6 Time Exceed reasse"] = Service("ICMP6 Time Exceed reasse",58,0,65535,0,65535)
+        self.services["ICMP6 Time Exceed transi"] = Service("ICMP6 Time Exceed transi",58,0,65535,0,65535)
         self.services["IDENT"] = Service("IDENT",6,0,65535,113,113)
         self.services["IKE"] = Service("IKE",17,0,65535,500,500)
         self.services["IKE-NAT"] = Service("IKE-NAT",17,0,65535,500,500)
@@ -714,6 +899,7 @@ class NetScreen(object):
         self.services["OSPF"] = Service("OSPF",89,0,65535,0,65535)
         self.services["PC-Anywhere"] = Service("PC-Anywhere",17,0,65535,5632,5632)
         self.services["PING"] = Service("PING",1,0,65535,0,65535)
+        self.services["PINGv6"] = Service("PING",58,0,65535,0,65535)
         self.services["POP3"] = Service("POP3",6,0,65535,110,110)
         self.services["PPTP"] = Service("PPTP",6,0,65535,1723,1723)
         self.services["RADIUS"] = Service("RADIUS",17,0,65535,1812,1813)
@@ -895,7 +1081,7 @@ class NetScreen(object):
                 zonename = self.inrec.split('\"')[1]
                 if 'debug' in globals() and debug > 0:
                     print "adding zone %s" % zonename
-                self.zones[zonename] = Zone(zonename)
+                self.add_zone(zonename)
                 self._get_next()
         self._close_infile()
         return
@@ -931,8 +1117,9 @@ class NetScreen(object):
                     self.interfaces[intname]['unnumbered'] = False
                     self.interfaces[intname]['unnumbered-interface'] = ''
                     self.interfaces[intname]['manageable'] = False
-                    self.interfaces[intname]['namage-ip'] = ''
+                    self.interfaces[intname]['manage-ip'] = ''
                     self.interfaces[intname]['ip'] = ''
+                    self.interfaces[intname]['ipv6'] = {}
                     self.interfaces[intname]['nat'] = False
                     self.interfaces[intname]['route'] = False
                     self.interfaces[intname]['description'] = ''
@@ -945,21 +1132,26 @@ class NetScreen(object):
                     self.interfaces[intname]['dip'] = {}
                     self.interfaces[intname]['vip'] = []
                     self.interfaces[intname]['mip'] = {}
+                    self.interfaces[intname]['zone'] = ''
                 if self.inrec.find(' zone ') > 0:
-                    if self.inrec.split(' ')[4] in self.zones.keys():
-                        self.interfaces[intname]['zone'] = self.zones[self.inrec.split(' ')[4]]
+                    zonename = self.inrec.split(' ')[4].replace("\"","")
+                    if zonename in self.zones.keys():
+                        self.interfaces[intname]['zone'] = self.zones[zonename]
                     else:
-                        self.zones[self.inrec.split(' ')[4]] = Zone(self.inrec.split(' ')[4])
-                        self.interfaces[intname]['zone'] = self.zones[self.inrec.split(' ')[4]]
+                        self.add_zone(zonename)
+                        self.interfaces[intname]['zone'] = self.zones[zonename]
                 if self.inrec.find(' ip unnumbered ') > 0:
                     self.interfaces[intname]['unnumbered'] = True
                     self.interfaces[intname]['unnumbered-interface'] = self.inrec.split(' ')[6]
                 elif self.inrec.find(' ip manageable') > 0:
                     self.interfaces[intname]['manageable'] = True
                 elif self.inrec.find(' manage-ip ') > 0:
-                    self.interfaces[intname]['namage-ip'] = self.inrec.split(' ')[4]
+                    self.interfaces[intname]['manage-ip'] = self.inrec.split(' ')[4]
                 elif self.inrec.find(' ip ') > 0:
-                    self.interfaces[intname]['ip'] = self.inrec.split(' ')[4]
+                    if self.inrec.find('.') > 0:
+                        self.interfaces[intname]['ip'] = self.inrec.split(' ')[4]
+                    elif self.inrec.find(':') >= 0:
+                        self.interfaces[intname]['ipv6'][self.inrec.split(' ')[5]] = self.inrec.split(' ')[5]
                 if self.inrec.find(' nat') > 0:
                     self.interfaces[intname]['nat'] = True
                 if self.inrec.find(' route') > 0:
@@ -986,11 +1178,14 @@ class NetScreen(object):
                     addrname = 'VIP('+self.inrec.split(' vip ')[1].split(' ')[0]+')'
                     addr = self.inrec.split(' vip ')[1].split(' ')[0]
                     target = self.inrec.split(' vip ')[1].split(' ')[3]
+                    srcport = self.inrec.split(' vip ')[1].split()[1]
+                    dstport = self.inrec.split(' vip ')[1].split()[2]
+                    self.add_vip(addrname,srcport,dstport,target,intname)
                     if addrname not in self.addresses.keys():
                         if 'Global' not in self.zones.keys():
-                            self.zones['Global'] = Zone('Global')
-                        self.addresses[addrname] = Address(addrname,self.zones['Global'])
-                        self.addresses[addrname].add_addr(str(addr))
+                            self.add_zone('Global')
+                        self.addresses[addrname] = Address(addrname,self.zones['Global'],target)
+                        self.addresses[addrname].add_addr(str(addr),self.zones['Global'])
                         self.addresses[addrname].add_comment(addrname+' to '+target)
                 if self.inrec.find(' mip ') > 0:
                     if self.inrec.find(' host ') > 0:
@@ -999,16 +1194,22 @@ class NetScreen(object):
                         addrname = 'MIP('+self.inrec.split(' mip ')[1].split(' ')[0]+')'
                         addr = self.inrec.split(' mip ')[1].split(' ')[0]
                         target = self.inrec.split(' mip ')[1].split(' host ')[1].split(' ')[0]
+                        self.add_mip(addrname,target,intname)
                         if addrname not in self.addresses.keys():
                             if 'Global' not in self.zones.keys():
-                                self.zones['Global'] = Zone('Global')
-                            self.addresses[addrname] = Address(addrname,self.zones['Global'])
-                            self.addresses[addrname].add_addr(str(addr))
-                            self.addresses[addrname].add_comment(addrname+' to '+target)
+                                self.add_zone('Global')
+                            self.addresses[addrname] = Address(addrname,self.zones['Global'],target)
+                            self.addresses[addrname].add_addr(str(addr),self.zones['Global'])
+                            self.addresses[addrname].add_comment(addrname+' mips to '+target)
                     else:
                         self.interfaces[intname]['mip'][self.inrec.split(' mip ')[1]] = self.inrec.split(' mip ')[1]
                 if self.inrec.find(' dip ') > 0:
-                    self.interfaces[intname]['dip'][self.inrec.split(' ')[4]] = self.inrec.split(' dip ')[1]
+                    if 'debug' in globals() and debug > 0:
+                        print "Parsing out DIP definition in %s" % self.inrec
+                    self.interfaces[intname]['dip'][self.inrec.split(' ')[4]] = self.inrec.split(' dip ')[1].split(" ",1)[1]
+                    self.add_dip(self.inrec.split(' ')[4],self.inrec.split(' dip ')[1].split(" ",1)[1],intname)
+                    if 'debug' in globals() and debug > 0:
+                        print "Added DIP #%s as %s" % ()
                 self._get_next()
         self._close_infile()
         return
@@ -1039,7 +1240,7 @@ class NetScreen(object):
                 if zonename not in self.zones.keys():
                     if 'debug' in globals() and debug > 0:
                         print "zonename %s not found in zones.keys" % zonename
-                    self.zones[zonename] = Zone(zonename)
+                    self.add_zone(zonename)
                     if 'debug' in globals() and debug > 0:
                         print "created zone %s" % zonename
                         print type(self.zones[zonename])
@@ -1047,14 +1248,19 @@ class NetScreen(object):
                 addr = self.inrec.split('\"')[4].lstrip()
                 if 'debug' in globals() and debug > 0:
                     print "parsed addrname=addr %s=%s" % (addrname,addr)
+                    if addrname.find("MIP") >= 0:
+                        print "*** FOUND MIP ***"
                 if addrname not in self.addresses.keys():
                     if 'debug' in globals() and debug > 0:
                         print "addrname %s is new - adding to self.addresses" % addrname
                     self.addresses[addrname] = Address(addrname,self.zones[zonename])
                     if 'debug' in globals() and debug > 0:
                         print type(self.addresses[addrname])
-                    self.zones[zonename].add_address(self.addresses[addrname])
-                self.addresses[addrname].add_addr(addr)
+                else:
+                    print
+                
+                self.addresses[addrname].add_addr(addr,self.zones[zonename])
+                self.zones[zonename].add_address(self.addresses[addrname])
                 if len(self.inrec.split('\"')) > 5:
                      self.addresses[addrname].add_comment(self.inrec.split('\"')[5])
                 self._get_next()
@@ -1085,7 +1291,7 @@ class NetScreen(object):
                 if zonename not in self.zones.keys():
                     if 'debug' in globals() and debug > 0:
                         print "zonename %s not found in zones.keys" % zonename
-                    self.zones[zonename] = Zone(zonename)
+                    self.add_zone(zonename)
                     if 'debug' in globals() and debug > 0:
                         print "created zone %s" % zonename
                         print type(self.zones[zonename])
@@ -1096,7 +1302,7 @@ class NetScreen(object):
                     if 'debug' in globals() and debug > 0:
                         print "new group - creating entry"
                     if zonename in self.zones.keys():
-                        self.addresses[groupname] = AddressGroup(groupname,self.zones[zonename],self)
+                        self.addresses[groupname] = AddressGroup(groupname,self.zones[zonename])
                     else:
                         print "Error: zone %s not found" % zonename
                 if len(self.inrec.split('\"')) > 5:
@@ -1106,6 +1312,9 @@ class NetScreen(object):
                         if 'debug' in globals() and debug > 0:
                             print "processing add: %s" % self.inrec
                         addrname = self.inrec.split('\"')[5]
+                        if 'debug' in globals() and debug > 0:
+                            if addrname.find('MIP') >= 0:
+                                print "*** FOUND MIP ***"
                         if addrname in self.addresses.keys():
                             if 'debug' in globals() and debug > 0:
                                 print 'addr found in addresses - adding object to group'
@@ -1235,7 +1444,7 @@ class NetScreen(object):
                     else:
                         if 'debug' in globals() and debug > 0:
                             print "initializing policy entry for %d" % cur_policy
-                        self.policies[cur_policy] = PolicyItem(int(cur_policy))
+                        self.policies[cur_policy] = PolicyItem(int(cur_policy),self)
                         self.policies[cur_policy].set_order(int(policy_counter))
                     if len(self.inrec.split(' ')) == 4:
                         if 'debug' in globals() and debug > 0:
@@ -1249,7 +1458,7 @@ class NetScreen(object):
                         else:
                             if 'debug' in globals() and debug > 0:
                                 print "cur_policy %d not in keys - initing" % cur_policy
-                            self.policies[cur_policy] = PolicyItem(int(cur_policy))
+                            self.policies[cur_policy] = PolicyItem(int(cur_policy),self)
                             self.policies[cur_policy].set_order(int(policy_counter))
                         if 'debug' in globals() and debug > 0:
                             print "processing [%s]" % self.inrec.split(' ')[4]
@@ -1271,7 +1480,7 @@ class NetScreen(object):
                             else:
                                 if 'debug' in globals() and debug > 0:
                                     print "add new zone %s" % zonename
-                                self.zones[zonename] = Zone(zonename)
+                                self.add_zone(zonename)
                                 self.policies[cur_policy].set_from_zone(self.zones[zonename])
                             zonename = self.inrec.split('\"')[5]
                             if 'debug' in globals() and debug > 0:
@@ -1283,7 +1492,7 @@ class NetScreen(object):
                             else:
                                 if 'debug' in globals() and debug > 0:
                                     print "add new zone %s" % zonename
-                                self.zones[zonename] = Zone(zonename)
+                                self.add_zone(zonename)
                                 self.policies[cur_policy].set_to_zone(self.zones[zonename])
                             if self.inrec.split('\"')[7].find('!') == 0:
                                 negated = True
@@ -1392,7 +1601,7 @@ class NetScreen(object):
                             else:
                                 if 'debug' in globals() and debug > 0:
                                     print "zone not found - adding"
-                                self.zones[zonename] = Zone(zonename)
+                                self.add_zone(zonename)
                                 self.policies[cur_policy].set_from_zone(self.zones[zonename])
                             zonename = self.inrec.split('\"')[3]
                             if 'debug' in globals() and debug > 0:
@@ -1404,7 +1613,7 @@ class NetScreen(object):
                             else:
                                 if 'debug' in globals() and debug > 0:
                                     print "zone not found - adding"
-                                self.zones[zonename] = Zone(zonename)
+                                self.add_zone(zonename)
                                 self.policies[cur_policy].set_to_zone(self.zones[zonename])
                             if self.inrec.split('\"')[5].find('!') == 0:
                                 negated = True
@@ -1597,17 +1806,16 @@ class NetScreen(object):
         """
         Method to print out all policy sets
         """
-        print
         linelen = 50
-        print "="*linelen
         leftside = "*****"
         rightside = str(leftside)
-        nl = "Configuration file: "+self.filename
+        nl = "Policies:"
         leftspace = ((linelen-len(nl))//2) - len(leftside)
         rightspace = (((linelen-len(nl))//2) - len(leftside)) + ((linelen-len(nl))%2)
         line = leftside + " "*leftspace
         line = line + nl + " "*rightspace
         line = line + rightside
+        print "="*linelen
         print line
         print "="*linelen
         for setname in sorted(self.policySets.keys()):
@@ -1625,25 +1833,300 @@ class NetScreen(object):
         print line
         print "="*linelen
         return
+    
+    def print_interfaces(self):
+        '''Method to print the interfaces and their
+        properties, including MIP mapping
+        '''
+        linelen = 50
+        print "="*linelen
+        leftside = "*****"
+        rightside = str(leftside)
+        nl = "Configuration file: "+self.filename
+        leftspace = ((linelen-len(nl))//2) - len(leftside)
+        rightspace = (((linelen-len(nl))//2) - len(leftside)) + ((linelen-len(nl))%2)
+        line = leftside + " "*leftspace
+        line = line + nl + " "*rightspace
+        line = line + rightside
+        print line
+        linelen = 50
+        print "="*linelen
+        leftside = "     "
+        rightside = str(leftside)
+        nl = "Interfaces:"
+        leftspace = ((linelen-len(nl))//2) - len(leftside)
+        rightspace = (((linelen-len(nl))//2) - len(leftside)) + ((linelen-len(nl))%2)
+        line = leftside + " "*leftspace
+        line = line + nl + " "*rightspace
+        line = line + rightside
+        print line
+        print "="*linelen
+        for intf in sorted(self.interfaces.keys()):
+            print
+            print "[%s]" % intf
+            print "IP: %s" % str(self.interfaces[intf]['ip'])
+            if len(self.interfaces[intf]['ipv6']) > 0:
+                for ipv6addr in sorted(self.interfaces[intf]['ipv6'].keys()):
+                    print "IP: %s" % str(ipv6addr)
+            print "Description: %s" % str(self.interfaces[intf]['description'])
+            if len(self.mips.keys()) > 0:
+                for mip in sorted(self.mips.keys()):
+                    if mip in self.mipsintf.keys() and intf in self.mipsintf[mip]:
+                        print ' %s  maps to %s' % (mip,self.mipstarget[mip])
+            if len(self.dips.keys()) > 0:
+                for dip in sorted(self.dips.keys()):
+                    if dip in self.dipsintf.keys() and intf in self.dipsintf[dip]:
+                        print "DIP: [%s] %s" % (dip,self.dipsdef[dip])
+            if len(self.vips.keys()) > 0:
+                for vip in sorted(self.vips.keys()):
+                    if vip in self.vipsintf.keys() and intf in self.vipsintf[vip]:
+                        print "VIP: %s[%s] maps to %s[%s]" % (vip,self.vipssrc[vip],self.vipstarget[vip],self.vipsdst[vip])
+            print "MTU: %d" % int(self.interfaces[intf]['mtu'])
+            print "NAT: %s" % repr(self.interfaces[intf]['nat'])
+            print "Route: %s" % repr(self.interfaces[intf]['route'])
+            print "Unnumbered: %s" % repr(self.interfaces[intf]['unnumbered'])
+            print "Unnumbered Intf: %s" % self.interfaces[intf]['unnumbered-interface']
+            print "Manage IP: %s" % self.interfaces[intf]['manage-ip']
+            manage = "Not Manageable: " if self.interfaces[intf]['manageable'] else "Manageable: "
+            if self.interfaces[intf]['manage-ping']: manage = manage + 'Ping ' 
+            if self.interfaces[intf]['manage-snmp']: manage = manage + 'SNMP '
+            if self.interfaces[intf]['manage-ssh']: manage = manage + 'SSH '
+            if self.interfaces[intf]['manage-ssl']: manage = manage + 'SSL '
+            if self.interfaces[intf]['manage-telnet']: manage = manage + 'TELNET '
+            if len(self.interfaces[intf]['zone']) > 0:
+                print "Zone: %s" % self.interfaces[intf]['zone'].zonename
+        print "="*linelen
+        return
+    
+    def print_zones(self):
+        """
+        Method to print out a list of all zones found
+        """
+        print "\nZone list:"
+        
+        if len(self.zones.keys()) < 1:
+            print "No zones found"
+        else:
+            for zone in sorted(self.zones.keys()):
+                print "%s" % zone
+        print
+        return
+    
+    def print_mips(self):
+        """
+        Method to print out MIP mappings to policy items
+        """
+        print
+        for mip in sorted(self.mips.keys()):
+            print " %s maps to %s" % (mip,self.mipstarget[mip])
+            mipcheck = mip.replace("MIP","VIP")
+            if mipcheck in self.vips.keys():
+                print "    ***     NOTE: MIP has matching VIP"
+            if len(self.mips[mip].keys()) > 0:
+                for polid in sorted(self.mips[mip].keys()):
+                    srcdst = self.mips[mip][polid].split('/')[0]
+                    print "   Found in %s Policy ID %d" % (srcdst,polid)
+        print
+        return
+    
+    def print_vips(self):
+        """
+        Method to print out VIP mappings to policy items
+        """
+        print
+        for vip in sorted(self.vips.keys()):
+            print " %s[%s] maps to %s[%s]" % (vip,self.vipssrc[vip],self.vipstarget[vip],self.vipsdst[vip])
+            vipcheck = vip.replace("VIP","MIP")
+            if vipcheck in self.mips.keys():
+                print "    ***     NOTE: VIP has matching MIP"
+            if len(self.vips[vip].keys()) > 0:
+                for polid in sorted(self.vips[vip].keys()):
+                    srcdst = self.vips[vip][polid].split('/')[0]
+                    print "   Found in %s Policy ID %d" % (srcdst,polid)
+        print
+        return
+    
+    def print_dips(self):
+        """
+        Method to print out DIP List
+        """
+        print
+        for dip in sorted(self.dips.keys()):
+            print " DIP [%s] maps to %s on %s" % (dip,self.dipsdef[dip],self.dipsintf[dip])
+        print
+        return
+    
+    def match_mip(self,prefix):
+        """
+        Method to take the existing MIP and map out a MIP in the
+        new subnet, then generate the screenos commands to add that MIP 
+        to the interface and to all policy items it is found in
+        """
+        for mip in sorted(self.mips.keys()):
+            if mip.find(':') < 0:
+                newmip = "MIP("+prefix+"."+mip.rsplit('.',1)[1]
+                newaddr=newmip.split("(")[1].split(")")[0]
+                print 
+                if newmip in self.mips.keys():
+                    print
+                    print "*"*80
+                    if mip.find(prefix)==4:
+                        print "*   Existing MIP found in new target subnet!!!"
+                        print "*   %s maps to %s on %s" % (mip,self.mipstarget[mip],self.mipsintf[mip])
+                    else:
+                        print "*   Duplicate MIP found for new target %s" % "x.x.x."+mip.rsplit('.',1)[1]
+                        print "*   Existing %s maps to %s on %s" % (mip,self.mipstarget[mip],self.mipsintf[mip])
+                        print "*   Existing mip in target subnet %s maps to %s on %s" % (newmip,self.mipstarget[newmip],self.mipsintf[newmip])
+                        print "*   Translating mip from old subnet into new subnet would conflict with existing mip in new subnet"
+                    print "*"*80
+                print "set interface "+self.mipsintf[mip]+" mip "+newaddr+" host "+self.mipstarget[mip]+\
+                      " netmask 255.255.255.255 vr \"trust-vr\""
+                if len(self.mips[mip].keys()) > 0:
+                    for polnum in sorted(self.mips[mip].keys()):
+                        policy = self.mips[mip][polnum]
+                        srcdst = policy.split("/")[0]
+                        print "set policy id %d" % polnum
+                        print "set %s-address \"MIP(%s)\"" % (srcdst,newaddr)
+                        print "exit"
+        return
+    
+    def print_addressnames(self):
+        """
+        Method to print out the address/address groups found
+        """
+        print "Address/Address Groups:"
+        if len(self.addresses.keys()) < 1:
+            print "No address or address groups found"
+        else:
+            for addr in sorted(self.addresses.keys()):
+                self.addresses[addr].print_address()
+                self.addresses[addr].print_duplicatelist()
+        print
+        return
+    
+    def print_services(self):
+        """
+        Method to print out all service/service groups
+        """
+        print "Service/Service Groups:"
+        if len(self.services.keys()) < 1:
+            print "No service/service groups found"
+        else:
+            for service in sorted(self.services.keys()):
+                self.services[service].print_service()
+        print
+        return
+
+def cmd_print_config(args):
+    """
+    Method to process the command line request
+    """
+    global debug
+    debug = int(args['debug'])
+    if 'debug' in globals() and debug > 0:
+        pprint.pprint(args)
+        for arg in args.keys():
+            print "%s is %s" % (arg,str(type(args[arg])))
+    filename = str(args['filename'])
+    generate = str(args['generate'])
+    subnet = str(args['subnet'])
+    p_interfaces = str(args['interfaces'])
+    p_zones = str(args['zones'])
+    p_addressnames = str(args['addressnames'])
+    p_services = str(args['services'])
+    p_mips = str(args['mips'])
+    if os.path.exists(filename):
+        ns = NetScreen(filename)
+        ns.print_all_policySets()
+        print
+        if p_interfaces.find('True') == 0:
+            ns.print_interfaces()
+            print
+        if p_zones.find('True') == 0:
+            ns.print_zones()
+            print
+        if p_addressnames.find('True') == 0:
+            ns.print_addressnames()
+            print
+        if p_services.find('True') == 0:
+            ns.print_services()
+            print
+        if p_mips.find('True') == 0:
+            print "MIPS:"
+            ns.print_mips()
+            print "VIPS:"
+            ns.print_vips()
+            print
+            print "DIPS:"
+            ns.print_dips()
+            print
+        if generate.find('True') == 0:
+            if len(subnet) > 0:
+                if subnet.find('.') == 3:
+                    sub1,sub2,sub3 = subnet.split('.')
+                    subn1 = int(sub1)
+                    subn2 = int(sub2)
+                    subn3 = int(sub3)
+                    if ((subn1 > 0) and (subn1 < 256)) and \
+                       ((subn2 >=0) and (subn2 < 256)) and \
+                       ((subn3 >=0) and (subn3 < 256)):
+                        ns.match_mip(subnet)
+                    else:
+                        print "Subnet not formatted properly or invalid subnet values - should be like 10.1.50 (no trailing period)"
+                else:
+                    print "Subnet not formatted properly - should be like 10.1.50 (no trailing period)"
+            else:
+                print "Generate requires a subnet to use in the new rules"
+    else:
+        print "Error: file <%s> not found" % filename
+    return {'args': args,ns: ns}
 
 def main():
+    
     print_parser = argparse.ArgumentParser(description=\
-             'Parse and print full NetScreen rulesets')
+             'Analyze screenos firewall configuration file')
+    
     print_parser.add_argument('filename',action='store',\
-                    help='configuration file to parse',\
-                    nargs='+')
+                    help='Name of configuration file to parse',\
+                    nargs=1)
+    print_parser.set_defaults(func=cmd_print_config)
     print_parser.add_argument('-debug', action='store', type = int, default=0,\
                     dest='debug', help='Debug level 0-9')
-    args = print_parser.parse_args()
-    global debug
-    debug = args.debug
-    filecount = len(args.filename)
-    ns = {}
-    for filenum in range(filecount):
-        filename = args.filename[filenum]
-        ns[filenum] = NetScreen(filename)
-        ns[filenum].print_all_policySets()
-    return {'ns': ns,'args': args}
+    print_parser.add_argument('-g', action='store_true', default = False,\
+                    dest='generate', help='Generate new rules for new subnet (see -n)')
+    print_parser.add_argument('-n', action='store', dest='subnet',\
+                    help='(See -g) New subnet e.g. 10.1.50 (no end period)')
+    print_parser.add_argument('-i', action='store_true', default = False,\
+                    dest='interfaces', help='Print interface information')
+    print_parser.add_argument('-z', action='store_true', default = False,\
+                    dest='zones', help='Print zone information')
+    print_parser.add_argument('-a', action='store_true', default = False,\
+                    dest='addressnames', help='Print address/address group information')
+    print_parser.add_argument('-s', action='store_true', default = False,\
+                    dest='services', help='Print service/service group information')
+    print_parser.add_argument('-m', action='store_true', default = False,\
+                    dest='mips', help='Print mips/vips/dips list')
+    cl = {}
+    results = {}
+    args = {}
+    try:
+        cl=print_parser.parse_args()
+        for x in cl.__dict__:
+            if 'debug' in globals() and debug > 0:
+                print "checking argument [%s] = %s" % (x,str(cl.__dict__[x]))
+            if "func" not in str(cl.__dict__[x]) or \
+               len(str(cl.__dict__[x])) != 4:
+                if (('dict' in repr(type(cl.__dict__[x]))) or 
+                   ('list' in repr(type(cl.__dict__[x])))):
+                    args[str(x)]=str(cl.__dict__[x][0])
+                else:
+                    args[str(x)]=str(cl.__dict__[x])
+        results = cl.func(args)
+    except SystemExit:
+        pass
+    finally:
+        pass
+    return {'parser': print_parser,'cl': cl,'args': args,'results': results}
 
 if __name__ == "__main__":
     session = main()
